@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# secrets
+.env
+
+# local data — never commit real financial data or the DB file
+data/*
+!data/.gitkeep
+.venv/

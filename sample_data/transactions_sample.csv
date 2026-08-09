@@ -1,0 +1,8 @@
+date,asset_symbol,asset_name,asset_class,type,quantity,price,fees,currency,source,notes
+2024-01-05,EUR_CASH,Euro Cash,cash,deposit,5000,1,0,EUR,manual,Initial deposit
+2024-01-10,IWDA,iShares Core MSCI World UCITS ETF,etf,buy,20,85.32,1.50,EUR,manual,
+2024-02-10,IWDA,,etf,buy,10,88.10,1.50,EUR,manual,
+2024-03-01,US0378331005,Apple Inc,stock,buy,5,180.25,2.00,USD,manual,
+2024-03-15,US0378331005,,stock,dividend,4.80,1,0,USD,manual,Quarterly dividend
+2024-04-01,BTC,Bitcoin,crypto,buy,0.05,42000,5,EUR,manual,
+2024-06-01,IWDA,,etf,sell,5,95.00,1.50,EUR,manual,Partial profit take
