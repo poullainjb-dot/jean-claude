@@ -62,15 +62,13 @@ need them until then.
 Click **Deploy**. First build takes a minute or two. Vercel gives you a
 `*.vercel.app` URL when it's done.
 
-**Which branch:** Vercel's default "Production" tracks whichever branch
-you tell it to. Development on this project has been happening on
-`claude/portfolio-app-spec-plan-pdjsod`, not `main`. Two options —
-pick one before or right after deploying:
-- Point Vercel's Production branch at `claude/portfolio-app-spec-plan-pdjsod`
-  directly, and treat that as "production" for now, **or**
-- Merge that branch into `main` first (say the word and I'll open a PR —
-  I don't create one unless you ask) and point Vercel at `main`, the more
-  conventional setup.
+**Which branch:** point Vercel's Production branch at `main`. The repo had
+no `main` branch until now — all development had been happening directly on
+`claude/portfolio-app-spec-plan-pdjsod` since the repo started empty. `main`
+now exists and points at the same commit, so it's current and ready to
+deploy from. (A normal PR-based merge wasn't possible here since there was
+no `main` to merge into — GitHub doesn't allow a PR with no diff between
+identical branches, so `main` was created directly instead.)
 
 ## 5. Verify the live deploy
 
