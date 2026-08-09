@@ -30,8 +30,12 @@ README's "Holdings & value/profit conventions" section (still accurate).
 - `/import` — upload forms for transactions and prices CSVs.
 - `GET /api/positions` — the dashboard's data as JSON, for reuse (scripts,
   a future mobile view, the research tool later on).
+- `/login` + a single shared password (`DASHBOARD_PASSWORD`) gate every
+  other route, including the API routes — see `src/lib/auth.ts` and
+  `src/proxy.ts` (Next.js 16 renamed `middleware.ts` to `proxy.ts`; same
+  mechanism).
 
-Not built yet: password gate, live connectors, research tool.
+Not built yet: live connectors, research tool.
 
 ## Stack
 
@@ -71,9 +75,11 @@ step needed yet.
    as the Python version's test suite (import, idempotent re-import, dedup,
    every validation rule, all-or-nothing rollback, holdings computation,
    value/profit math checked against hand-calculated numbers), plus a
-   quoted-CSV-field case:
+   quoted-CSV-field case and the auth logic (password check, cookie token
+   round-trip/tamper rejection, login/logout routes, fail-closed behavior
+   when `DASHBOARD_PASSWORD` is unset):
    ```bash
-   npm test         # expect 27 passed
+   npm test         # expect 42 passed
    npx tsc --noEmit # type-check (run `npm run build` first if this is a fresh checkout — see note below)
    npm run lint
    npm run build    # confirms it actually builds for production
@@ -86,9 +92,14 @@ step needed yet.
    ```bash
    npm run dev
    ```
-   Open `http://localhost:3000` — with an empty DB it shows "No holdings
-   yet" and a link to `/import`. Upload
-   `../sample_data/transactions_sample.csv`, then
+   Set `DASHBOARD_PASSWORD` in `.env.local` first. Open
+   `http://localhost:3000` — expect an immediate redirect to `/login`
+   (unauthenticated). A wrong password should show "Incorrect password"
+   and not log you in. The correct password should land you on the
+   dashboard; with an empty DB it shows "No holdings yet" and a link to
+   `/import`.
+
+   Upload `../sample_data/transactions_sample.csv`, then
    `../sample_data/prices_sample.csv`. Expect transactions: `Read 7 row(s)`,
    `Created 4 new asset(s)`, `Inserted 7`, `Skipped 0`; prices: `Read 3
    row(s)`, `Inserted 3`, `Updated 0`, `Unchanged 0`. Re-upload either file
@@ -102,6 +113,11 @@ step needed yet.
    positions table should scroll horizontally within its own box; the page
    itself should never need horizontal scrolling.
 
+   Click **Log out**, confirm you land back on `/login`, and that visiting
+   `/` again redirects you there too rather than showing stale data. Try
+   `curl -i http://localhost:3000/api/positions` with no cookie — expect
+   `401`.
+
    Verify dates directly in Postgres:
    ```bash
    psql "$DATABASE_URL" -c "SELECT date, type, quantity, price FROM transactions t JOIN assets a ON a.id = t.asset_id ORDER BY date;"
@@ -114,7 +130,7 @@ step needed yet.
 
 1. ~~Transactions data model + CSV upload~~ ✅ (R1)
 2. ~~Prices CSV upload + holdings/value/profit computation + a dashboard page~~ ✅ (R2)
-3. Password gate (single shared password via middleware)
+3. ~~Password gate (single shared password via proxy)~~ ✅ (R3)
 4. Deploy to Vercel + Neon — see [`../DEPLOYMENT.md`](../DEPLOYMENT.md)
 5. Live price connector: yfinance-equivalent
 6. Bolero CSV/Excel import adapter

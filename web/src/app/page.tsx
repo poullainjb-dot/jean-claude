@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ensureSchema, getPool } from "@/lib/db";
 import { computePositions, totalsByCurrency } from "@/lib/valuation";
+import { LogoutButton } from "./LogoutButton";
 
 // Never cache financial data — always compute fresh from the DB.
 export const dynamic = "force-dynamic";
@@ -26,7 +27,10 @@ export default async function Home() {
   if (positions.length === 0) {
     return (
       <main className="max-w-3xl mx-auto p-8 flex flex-col gap-4">
-        <h1 className="text-2xl font-bold">Portfolio</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Portfolio</h1>
+          <LogoutButton />
+        </div>
         <p className="text-sm opacity-70">
           No holdings yet.{" "}
           <Link href="/import" className="underline">
@@ -46,9 +50,12 @@ export default async function Home() {
     <main className="max-w-4xl mx-auto p-8 flex flex-col gap-8 min-w-0 w-full">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Portfolio</h1>
-        <Link href="/import" className="text-sm underline opacity-70">
-          Import data
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/import" className="text-sm underline opacity-70">
+            Import data
+          </Link>
+          <LogoutButton />
+        </div>
       </div>
 
       <section className="min-w-0">
