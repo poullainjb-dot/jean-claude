@@ -11,12 +11,22 @@
  */
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS assets (
-    id          SERIAL PRIMARY KEY,
-    symbol      TEXT NOT NULL UNIQUE,
-    name        TEXT,
-    asset_class TEXT NOT NULL CHECK (asset_class IN ('stock', 'etf', 'cash', 'gold', 'crypto')),
-    currency    TEXT NOT NULL
+    id           SERIAL PRIMARY KEY,
+    symbol       TEXT NOT NULL UNIQUE,
+    name         TEXT,
+    asset_class  TEXT NOT NULL CHECK (asset_class IN ('stock', 'etf', 'cash', 'gold', 'crypto')),
+    currency     TEXT NOT NULL,
+    -- The ticker a live price connector should look up, if it differs from
+    -- \`symbol\` (e.g. symbol is an ISIN, or Yahoo Finance needs an exchange
+    -- suffix like '.AS'). NULL means "use symbol as-is". Added for R5 — see
+    -- priceRefresh.ts.
+    price_symbol TEXT
 );
+
+-- Idempotent, so it also applies to databases that already had \`assets\`
+-- before price_symbol existed (CREATE TABLE IF NOT EXISTS above is a no-op
+-- on those).
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS price_symbol TEXT;
 
 CREATE TABLE IF NOT EXISTS transactions (
     id          TEXT PRIMARY KEY,

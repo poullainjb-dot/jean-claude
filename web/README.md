@@ -15,25 +15,34 @@ serverless is built for).
 
 ## Status
 
-**R4 complete: deployed and live** — reachable at a public URL on the
-user's own Vercel + Neon accounts, confirmed working from a phone over
-cellular data, not just locally. Built on R1-R3: transactions/prices CSV
-upload, computed holdings/value/profit, a dashboard, and a password gate on
-every route including the API. Same schema, validation rules, dedup
-approach, and computation conventions as the original Python build
-throughout — see
+**R5: live stock/ETF prices from Yahoo Finance**, on top of R1-R4
+(transactions/prices CSV upload, computed holdings/value/profit, a
+dashboard, a password gate on every route, deployed and live on Vercel +
+Neon). Same schema, validation rules, dedup approach, and computation
+conventions as the original Python build throughout — see
 [`src/lib/importer.ts`](./src/lib/importer.ts),
 [`src/lib/priceImporter.ts`](./src/lib/priceImporter.ts),
-[`src/lib/holdings.ts`](./src/lib/holdings.ts), and
-[`src/lib/valuation.ts`](./src/lib/valuation.ts) docstrings, plus the root
-README's "Holdings & value/profit conventions" section (still accurate).
+[`src/lib/holdings.ts`](./src/lib/holdings.ts),
+[`src/lib/valuation.ts`](./src/lib/valuation.ts), and
+[`src/lib/priceRefresh.ts`](./src/lib/priceRefresh.ts) docstrings, plus the
+root README's "Holdings & value/profit conventions" section (still
+accurate).
 
 - `/` — dashboard: totals by currency + a positions table (quantity, price,
   value, cost basis, profit, profit %). Server-rendered, always fresh
   (`force-dynamic`) — never cached, since this is financial data.
-- `/import` — upload forms for transactions and prices CSVs.
+- `/import` — live price refresh (stocks/ETFs) + upload forms for
+  transactions and prices CSVs, CSV remaining the fallback per the spec's
+  design rule.
 - `GET /api/positions` — the dashboard's data as JSON, for reuse (scripts,
   a future mobile view, the research tool later on).
+- `POST /api/prices/refresh` — fetches recent daily closes from Yahoo
+  Finance (via `yahoo-finance2`, the TS equivalent of the spec's `yfinance`
+  — no API key needed) for every stock/ETF asset, upserts into `prices`.
+  Best-effort per asset, unlike the CSV importers: one bad symbol doesn't
+  block the rest. `assets.price_symbol` overrides the lookup ticker when
+  `symbol` isn't a valid Yahoo ticker (e.g. it's an ISIN) — no UI to edit
+  it yet, set directly via SQL if you need it before that lands.
 - `/login` + a single shared password (`DASHBOARD_PASSWORD`) gate every
   other route, including the API routes — see `src/lib/auth.ts` and
   `src/proxy.ts` (Next.js 16 renamed `middleware.ts` to `proxy.ts`; same
@@ -42,7 +51,19 @@ README's "Holdings & value/profit conventions" section (still accurate).
   not auto-detected correctly the first time, see `../DEPLOYMENT.md`),
   Postgres on Neon (pooled connection string).
 
-Not built yet: live connectors, research tool.
+**Not verified against the live Yahoo Finance API yet** — this dev
+session's outbound network is policy-restricted and can't reach
+`query1/2.finance.yahoo.com` (confirmed via the proxy's own diagnostics).
+Everything up to and including the real network call was verified end to
+end (auth, asset filtering, DB writes, UI, and the actual failure path when
+the network call itself fails) — the one thing unverified is whether
+`yahoo-finance2` correctly parses a real response once it can reach Yahoo.
+First person to run this locally or on the deployed app should treat that
+as the real first test, and specifically check that returned dates match
+Yahoo's own site — see the date-conversion caveat in
+[`src/lib/yahooPrices.ts`](./src/lib/yahooPrices.ts).
+
+Not built yet: remaining connectors (Bolero, TradeRepublic, crypto, gold), research tool.
 
 ## Stack
 
@@ -86,7 +107,7 @@ step needed yet.
    round-trip/tamper rejection, login/logout routes, fail-closed behavior
    when `DASHBOARD_PASSWORD` is unset):
    ```bash
-   npm test         # expect 42 passed
+   npm test         # expect 48 passed
    npx tsc --noEmit # type-check (run `npm run build` first if this is a fresh checkout — see note below)
    npm run lint
    npm run build    # confirms it actually builds for production
@@ -133,13 +154,31 @@ step needed yet.
    DB driver is configured to keep `DATE` columns as plain strings rather
    than JS `Date` objects specifically to avoid timezone-shift bugs here.
 
+3. **This is the one that actually needs your machine, not mine** — click
+   **"Refresh from Yahoo Finance"** on `/import` (with `IWDA` and
+   `US0378331005` present from the sample data above). No API key needed.
+   Expect:
+   - `IWDA` and `US0378331005` most likely both fail — `IWDA` is a real
+     ticker but on a European exchange (may need a `price_symbol` override
+     like `IWDA.AS`, not settable from the UI yet — see Status above);
+     `US0378331005` is Apple's ISIN, not a ticker Yahoo Finance recognizes,
+     so it's expected to report `no_data` regardless.
+   - To actually see a success, add a real US-listed asset first — import
+     a one-off transaction with `asset_symbol=AAPL`, then refresh; expect
+     `1 succeeded`, a handful of new prices, and `SELECT * FROM prices
+     WHERE asset_id = (SELECT id FROM assets WHERE symbol = 'AAPL')`
+     showing real recent closes with `source = 'yahoo'`.
+   - Check the returned dates against Yahoo Finance's own site for that
+     ticker — this is the specific thing I couldn't verify from this dev
+     session (see the Status section's caveat).
+
 ## Roadmap
 
 1. ~~Transactions data model + CSV upload~~ ✅ (R1)
 2. ~~Prices CSV upload + holdings/value/profit computation + a dashboard page~~ ✅ (R2)
 3. ~~Password gate (single shared password via proxy)~~ ✅ (R3)
 4. ~~Deploy to Vercel + Neon~~ ✅ (R4) — see [`../DEPLOYMENT.md`](../DEPLOYMENT.md)
-5. Live price connector: yfinance-equivalent
+5. ~~Live price connector: yfinance-equivalent~~ ✅ (R5) — not yet verified against the live API from this dev session, see Status above
 6. Bolero CSV/Excel import adapter
 7. TradeRepublic via `pytr`
 8. Crypto: exchange API(s) + CoinGecko prices
