@@ -1,5 +1,12 @@
 # Deployment
 
+**Status: live.** Deployed on Vercel + Neon, verified reachable from a
+phone over cellular data. Two real mistakes happened on the way (Framework
+Preset defaulted to "Other" instead of "Next.js," and a database password
+got exposed in a screenshot and had to be rotated) — both noted inline
+below, since they're the two most likely to recur on a future redeploy or
+for anyone else following this doc.
+
 Everything below happens on your accounts (Vercel, Neon) — I have no
 credentials for either and can't click through their dashboards for you.
 This doc is the exact sequence; I've flagged the two steps that are easy to
@@ -31,17 +38,24 @@ get wrong.
    access to the repo if it asks).
 2. **Before deploying**, set **Root Directory** to `web`.
 
-   > **This is the step most likely to trip you up.** The Next.js app
-   > lives in `web/`, not the repo root — `portfolio-app-spec.md`,
-   > `sample_data/`, and the old Python build are siblings of it. Without
-   > this, Vercel looks for `package.json` at the repo root, doesn't find
-   > a Next.js app, and either fails the build or deploys the wrong thing.
-   > Vercel should auto-detect the Next.js framework once Root Directory
-   > is set correctly — leave build/output settings on their defaults.
+   > The Next.js app lives in `web/`, not the repo root —
+   > `portfolio-app-spec.md`, `sample_data/`, and the old Python build are
+   > siblings of it. Without this, Vercel looks for `package.json` at the
+   > repo root and doesn't find a Next.js app.
 
-3. Don't hit Deploy yet — add the environment variables first (step 3),
-   since a build without them will fail (the app throws on a missing
-   `DASHBOARD_PASSWORD`, deliberately — see R3).
+3. **Check Framework Preset is set to "Next.js," don't assume it.** This
+   is the step that actually broke the first real deploy: Root Directory
+   was correct, the build itself succeeded, but Vercel had Framework
+   Preset set to **"Other"** instead of auto-detecting Next.js, so it went
+   looking for a static `public/` output folder that doesn't exist and
+   failed with *"No Output Directory named 'public' found after the Build
+   completed."* Fix: Project → **Settings → Build and Deployment** →
+   Framework Preset → **Next.js** → leave Build Command/Output
+   Directory/Install Command on their defaults (Override off) → Save.
+
+4. Don't hit Deploy yet — add the environment variables first (section 3
+   below), since a build without them will fail (the app throws on a
+   missing `DASHBOARD_PASSWORD`, deliberately — see R3).
 
 ## 3. Set environment variables
 
@@ -53,9 +67,21 @@ In the Vercel project's **Settings → Environment Variables**, add for
 | `DATABASE_URL` | the pooled Neon connection string from step 1 |
 | `DASHBOARD_PASSWORD` | a real password you choose now — pick it directly in Vercel's UI, don't paste it into any chat, including this one |
 
+Double check the connection string actually landed in the **Value** field,
+not the **Key** field — easy to swap by accident, and Vercel doesn't
+validate that for you.
+
 Leave every other key from `web/.env.example` unset for now — they're for
 connectors that don't exist yet (later roadmap phases) and Vercel doesn't
 need them until then.
+
+**If a real secret ever ends up somewhere it shouldn't** (pasted into a
+chat, screenshotted, committed by accident) — treat it as compromised
+immediately, not "probably fine": in Neon, open the connection panel for
+your database → **Reset password** → copy the new pooled connection string
+→ update `DATABASE_URL` in Vercel with it → redeploy so the new value
+takes effect. Takes under a minute; there's no reason to leave an exposed
+credential live while you decide whether it matters.
 
 ## 4. Deploy
 
@@ -71,6 +97,11 @@ no `main` to merge into — GitHub doesn't allow a PR with no diff between
 identical branches, so `main` was created directly instead.)
 
 ## 5. Verify the live deploy
+
+**Done — all of the below passed**, including from a phone on cellular
+data, confirming the app is genuinely internet-reachable and not just
+resolving via a shared network. Kept as a checklist for the next redeploy
+or anyone else following this doc.
 
 1. Visit the `*.vercel.app` URL — expect an immediate redirect to `/login`
    (this confirms the proxy/auth gate is actually active in production,

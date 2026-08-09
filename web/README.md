@@ -15,9 +15,13 @@ serverless is built for).
 
 ## Status
 
-**R2: prices CSV upload + computed holdings/value/profit + a dashboard**,
-ported from the Python version's Phases 1-2-3. Same schema, validation
-rules, dedup approach, and computation conventions throughout — see
+**R4 complete: deployed and live** — reachable at a public URL on the
+user's own Vercel + Neon accounts, confirmed working from a phone over
+cellular data, not just locally. Built on R1-R3: transactions/prices CSV
+upload, computed holdings/value/profit, a dashboard, and a password gate on
+every route including the API. Same schema, validation rules, dedup
+approach, and computation conventions as the original Python build
+throughout — see
 [`src/lib/importer.ts`](./src/lib/importer.ts),
 [`src/lib/priceImporter.ts`](./src/lib/priceImporter.ts),
 [`src/lib/holdings.ts`](./src/lib/holdings.ts), and
@@ -34,6 +38,9 @@ README's "Holdings & value/profit conventions" section (still accurate).
   other route, including the API routes — see `src/lib/auth.ts` and
   `src/proxy.ts` (Next.js 16 renamed `middleware.ts` to `proxy.ts`; same
   mechanism).
+- Deployed on Vercel (Root Directory `web`, Framework Preset **Next.js** —
+  not auto-detected correctly the first time, see `../DEPLOYMENT.md`),
+  Postgres on Neon (pooled connection string).
 
 Not built yet: live connectors, research tool.
 
@@ -131,7 +138,7 @@ step needed yet.
 1. ~~Transactions data model + CSV upload~~ ✅ (R1)
 2. ~~Prices CSV upload + holdings/value/profit computation + a dashboard page~~ ✅ (R2)
 3. ~~Password gate (single shared password via proxy)~~ ✅ (R3)
-4. Deploy to Vercel + Neon — see [`../DEPLOYMENT.md`](../DEPLOYMENT.md)
+4. ~~Deploy to Vercel + Neon~~ ✅ (R4) — see [`../DEPLOYMENT.md`](../DEPLOYMENT.md)
 5. Live price connector: yfinance-equivalent
 6. Bolero CSV/Excel import adapter
 7. TradeRepublic via `pytr`
