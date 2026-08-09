@@ -2,4 +2,8 @@
 python-dotenv>=1.0
 pytest>=7.0
 
-# Later phases will add: pandas, streamlit, yfinance, pytr, exchange SDKs, anthropic
+# Phase 3: dashboard
+streamlit>=1.38
+pandas>=2.0
+
+# Later phases will add: yfinance, pytr, exchange SDKs, anthropic

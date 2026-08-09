@@ -9,14 +9,12 @@ this is built from (data sources, schema, computed metrics, research tool).
 
 ## Status
 
-**Phase 2 complete: manual price CSV import → computed holdings → value/profit view.**
-Phase 1 (transactions data model + manual CSV import) is the foundation every
-later source (Bolero export, TradeRepublic via `pytr`, exchange APIs) will
-feed into — CSV import is the universal fallback, so a broken live connector
-never blocks you.
+**Phase 3 complete: read-only Streamlit dashboard** on top of Phase 1
+(transactions data model + manual CSV import — the foundation every later
+source feeds into) and Phase 2 (manual price import → computed holdings →
+value/profit view).
 
-Not built yet: dashboard, live connectors, and the research tool. See
-**Roadmap** below.
+Not built yet: live connectors and the research tool. See **Roadmap** below.
 
 ## Setup
 
@@ -146,15 +144,35 @@ flagging since the spec doesn't spell them out:
 The DB file location defaults to `./data/portfolio.db` (gitignored — never
 committed). Override with `--db <path>` or the `PORTFOLIO_DB_PATH` env var.
 
+## Dashboard
+
+```bash
+.venv/bin/streamlit run dashboard.py
+```
+
+Opens in your browser (default `http://localhost:8501`). It's **read-only**
+— importing still goes through the CLI commands above; the dashboard just
+displays whatever's currently in the DB (same `--db`/`PORTFOLIO_DB_PATH`
+resolution as the CLI). Shows:
+- totals per currency (with a note when a position's price is missing, so a
+  gap in your price data is visible instead of silently making the total
+  look smaller than it is)
+- a table of every open position: quantity, price, value, cost basis,
+  profit, profit %
+
+If the DB has no holdings yet, it shows the import command to run instead of
+an empty page.
+
 ## How to test this slice
 
 1. **Automated tests** — schema creation, import, idempotent re-import, all
-   validation rules, all-or-nothing rollback, holdings computation, and
-   value/profit math (checked against hand-calculated numbers):
+   validation rules, all-or-nothing rollback, holdings computation,
+   value/profit math (checked against hand-calculated numbers), and the
+   dashboard (headless, via Streamlit's `AppTest` — no browser needed):
    ```bash
    .venv/bin/python -m pytest -v
    ```
-   Expect 26 passed.
+   Expect 29 passed.
 
 2. **Manual walkthrough**, to see it end to end:
    ```bash
@@ -169,13 +187,17 @@ committed). Override with `--db <path>` or the `PORTFOLIO_DB_PATH` env var.
 
    .venv/bin/python -m portfolio.cli import-prices sample_data/prices_sample.csv
    .venv/bin/python -m portfolio.cli value      # now every position has a value/profit; two currency totals (EUR, USD)
+
+   .venv/bin/streamlit run dashboard.py         # same numbers, in the browser
    ```
    You should see 4 assets and 7 transactions, matching
    `sample_data/transactions_sample.csv`, and the second transaction import
    should report `Inserted 0` / `Skipped 7`. After importing prices, `value`
    should show: IWDA qty 25 @ 96.50 = 2412.50 EUR (profit +295.60), BTC qty
    0.05 @ 45000 = 2250 EUR (profit +145.00), AAPL qty 5 @ 195 = 975 USD
-   (profit +71.75), EUR_CASH 5000 EUR flat (profit 0).
+   (profit +71.75), EUR_CASH 5000 EUR flat (profit 0). The dashboard should
+   show the same 4 positions and two currency totals (EUR 9,662.50 /
+   +440.60 profit, USD 975.00 / +71.75 profit).
 
 3. **Try your own data** (once you're ready to use it for real — see the note
    below): copy `sample_data/transactions_template.csv` and
@@ -192,7 +214,7 @@ committed). Override with `--db <path>` or the `PORTFOLIO_DB_PATH` env var.
 
 1. ~~Transactions/prices data model + manual CSV import~~ ✅
 2. ~~Manual price CSV import → computed holdings → value/profit view~~ ✅
-3. Streamlit dashboard (read-only)
+3. ~~Streamlit dashboard (read-only)~~ ✅
 4. Live price connector: yfinance
 5. Bolero CSV/Excel import adapter
 6. TradeRepublic via `pytr`
