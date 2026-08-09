@@ -14,3 +14,10 @@ export interface ImportStats {
   inserted: number;
   skippedDuplicates: number;
 }
+
+export interface ImportPricesStats {
+  rowsRead: number;
+  inserted: number;
+  updated: number;
+  unchanged: number;
+}

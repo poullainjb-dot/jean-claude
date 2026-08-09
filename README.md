@@ -34,8 +34,9 @@ all your devices. That trade-off was made deliberately, not silently.
 CSV import) and Phase 2 (manual price import → computed holdings →
 value/profit view). Still fully working; see below for how to run it.
 
-**Next.js/Vercel build (active): R1 complete** — transactions data model +
-CSV upload via a web UI, backed by Postgres. See
+**Next.js/Vercel build (active): R2 complete** — transactions + prices CSV
+upload, computed holdings/value/profit, and a dashboard (desktop and mobile
+widths both verified), backed by Postgres. See
 [`web/README.md`](./web/README.md) for its own status and roadmap.
 
 ## Setup

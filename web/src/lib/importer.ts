@@ -7,9 +7,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { parse } from "csv-parse/sync";
 import type { PoolClient } from "pg";
+import { CsvValidationError, isValidDate, parseCsvRows } from "./csv";
 import type { AssetClass, ImportStats, TransactionType } from "./types";
+
+export { CsvValidationError } from "./csv";
 
 const REQUIRED_COLUMNS = [
   "date",
@@ -33,10 +35,6 @@ const VALID_TYPES: readonly TransactionType[] = [
   "dividend",
 ];
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-export class CsvValidationError extends Error {}
-
 interface NormalizedRow {
   date: string;
   assetSymbol: string;
@@ -49,42 +47,6 @@ interface NormalizedRow {
   currency: string;
   source: string;
   notes: string | null;
-}
-
-function isValidDate(s: string): boolean {
-  if (!DATE_RE.test(s)) return false;
-  // Reject e.g. 2024-02-30 — Date would otherwise silently roll it forward
-  // to March 1st instead of rejecting it.
-  const d = new Date(`${s}T00:00:00Z`);
-  return d.toISOString().slice(0, 10) === s;
-}
-
-/** Parses the CSV and returns one plain object per data row, keyed by header. */
-function parseRows(csvText: string): Record<string, string>[] {
-  let rawRows: string[][];
-  try {
-    rawRows = parse(csvText, { skip_empty_lines: true, trim: false }) as string[][];
-  } catch (err) {
-    throw new CsvValidationError(`Failed to parse CSV: ${(err as Error).message}`);
-  }
-
-  if (rawRows.length === 0) {
-    throw new CsvValidationError("CSV is empty");
-  }
-
-  const header = rawRows[0];
-  const missing = REQUIRED_COLUMNS.filter((c) => !header.includes(c));
-  if (missing.length > 0) {
-    throw new CsvValidationError(`CSV is missing required column(s): ${JSON.stringify(missing)}`);
-  }
-
-  return rawRows.slice(1).map((row) => {
-    const record: Record<string, string> = {};
-    header.forEach((col, i) => {
-      record[col] = row[i] ?? "";
-    });
-    return record;
-  });
 }
 
 function validateAndNormalizeRow(
@@ -216,7 +178,7 @@ async function getOrCreateAsset(
  * (not the Pool itself) so BEGIN/COMMIT/ROLLBACK apply to a single connection.
  */
 export async function importTransactionsCsv(csvText: string, client: PoolClient): Promise<ImportStats> {
-  const rawRecords = parseRows(csvText);
+  const rawRecords = parseCsvRows(csvText, REQUIRED_COLUMNS);
 
   const normalizedRows: NormalizedRow[] = [];
   const allErrors: string[] = [];
