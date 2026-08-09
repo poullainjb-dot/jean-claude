@@ -1,20 +1,42 @@
 # Portfolio App
 
-A local app that replaces Finary: tracks value/profit, forecasts future
-wealth, and provides an ad-hoc research tool per ticker. Runs locally with
-your own API keys — nothing routed through a third party.
+An app that replaces Finary: tracks value/profit, forecasts future wealth,
+and provides an ad-hoc research tool per ticker.
 
 See [`portfolio-app-spec.md`](./portfolio-app-spec.md) for the full spec
 this is built from (data sources, schema, computed metrics, research tool).
 
+## Two builds in this repo
+
+- **[`web/`](./web/)** — the current, active build. Next.js + TypeScript +
+  Postgres, built to deploy on Vercel so the app is reachable from your
+  phone/tablet/PC, not just one local machine. See
+  [`web/README.md`](./web/README.md) and [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+- **`portfolio/` + `dashboard.py`** (repo root) — the original prototype:
+  Python + SQLite + Streamlit, local-only. Kept as-is, not deleted, because
+  it's tested and working — but it's no longer where new work happens. Its
+  README section below still documents it accurately for anyone who wants
+  to run it locally.
+
+The switch happened because SQLite + Streamlit can't run on Vercel
+(stateless serverless functions can't hold a persistent local file or a
+long-running process) — see the `web/` README for the detailed reasoning.
+One consequence worth naming: the original spec's "runs locally, nothing
+routed through a third party" framing no longer fully holds once the app is
+deployed to Vercel with a hosted Postgres DB — your data and API keys now
+live on infrastructure you don't own, in exchange for being reachable from
+all your devices. That trade-off was made deliberately, not silently.
+
 ## Status
 
-**Phase 3 complete: read-only Streamlit dashboard** on top of Phase 1
-(transactions data model + manual CSV import — the foundation every later
-source feeds into) and Phase 2 (manual price import → computed holdings →
-value/profit view).
+**Python/Streamlit build (no longer active development): Phase 3 complete**
+— read-only dashboard on top of Phase 1 (transactions data model + manual
+CSV import) and Phase 2 (manual price import → computed holdings →
+value/profit view). Still fully working; see below for how to run it.
 
-Not built yet: live connectors and the research tool. See **Roadmap** below.
+**Next.js/Vercel build (active): R1 complete** — transactions data model +
+CSV upload via a web UI, backed by Postgres. See
+[`web/README.md`](./web/README.md) for its own status and roadmap.
 
 ## Setup
 
@@ -210,15 +232,12 @@ an empty page.
 > pasted into chat or committed. `data/` and `.env` are both gitignored for
 > this reason.
 
-## Roadmap
+## Roadmap (Python/Streamlit build — frozen, not being continued)
 
 1. ~~Transactions/prices data model + manual CSV import~~ ✅
 2. ~~Manual price CSV import → computed holdings → value/profit view~~ ✅
 3. ~~Streamlit dashboard (read-only)~~ ✅
-4. Live price connector: yfinance
-5. Bolero CSV/Excel import adapter
-6. TradeRepublic via `pytr`
-7. Crypto: exchange API(s) + CoinGecko prices
-8. Gold: manual entry + spot price API
-9. Remaining computed metrics: forecast, TWR, dividends, risk/diversification (incl. ETF look-through), rebalancing flags — this phase also needs an FX rate source to produce a single combined total across currencies
-10. Ad-hoc research tool (Claude API + web search)
+4. Live price connector: yfinance, and everything after it — **not built**,
+   development moved to the `web/` rewrite before this phase started. See
+   [`web/README.md`](./web/README.md) for the roadmap being actively worked
+   on now.
