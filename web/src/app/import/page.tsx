@@ -28,11 +28,13 @@ export default function ImportPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Prices — live (stocks &amp; ETFs)</h2>
         <p className="text-sm opacity-70">
-          Fetches recent daily closes from Yahoo Finance for every stock/ETF asset. Looks up each
+          Fetches recent daily closes from Twelve Data for every stock/ETF asset. Looks up each
           asset&apos;s <code>symbol</code> directly unless a <code>price_symbol</code> override is set
           on it (needed if your symbol is an ISIN, or a non-US listing needs an exchange suffix like{" "}
           <code>.AS</code>) — a failed lookup is reported per-asset below, not silently skipped.
-          Doesn&apos;t touch cash, gold, or crypto; those get their own connectors later.
+          Doesn&apos;t touch cash, gold, or crypto; those get their own connectors later. Paced at
+          ~1 asset every 8 seconds to stay under the free tier&apos;s rate limit, so a refresh
+          covering many assets takes a few minutes — the page will wait for it.
         </p>
         <RefreshLivePricesForm />
       </section>

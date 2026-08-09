@@ -1,29 +1,35 @@
 /**
  * Live price refresh for stocks/ETFs — the yfinance-equivalent connector
- * from the roadmap (R5). Fetches recent daily closes from Yahoo Finance and
+ * from the roadmap (R5). Fetches recent daily closes from Twelve Data and
  * upserts them into `prices`, same table the manual CSV importer writes to
- * (source differs: 'yahoo' here vs whatever the CSV said). Manual CSV
+ * (source differs: 'twelvedata' here vs whatever the CSV said). Manual CSV
  * import remains the fallback per the spec's design rule — this doesn't
  * replace it, it just means you don't have to use it for stocks/ETFs
  * day-to-day anymore.
  *
  * Scope: only asset_class IN ('stock', 'etf'). Crypto and gold get their
- * own connectors later (CoinGecko, a spot-price API) per the roadmap —
- * this one doesn't reach for those, even though Yahoo Finance technically
- * has some crypto/commodity tickers too.
+ * own connectors later (CoinGecko, a spot-price API) per the roadmap.
  *
  * Deliberately NOT all-or-nothing, unlike the CSV importers: one asset with
  * a bad symbol shouldn't block every other asset's prices from updating.
  * Each asset is fetched and written independently; failures are collected
  * per-asset in the result instead of aborting the batch.
+ *
+ * Rate limiting: Twelve Data's free tier allows 8 requests/minute. One
+ * asset = one request, so a refresh covering many assets has to pace
+ * itself rather than fire everything at once — REQUEST_SPACING_MS below
+ * keeps it under that cap with some margin (7.5/min effective rate), which
+ * means a 20-asset refresh takes a couple of minutes. `delayMs` is
+ * injectable so tests don't actually wait — see priceRefresh.test.ts.
  */
 
 import type { PoolClient } from "pg";
-import { fetchDailyCloses } from "./yahooPrices";
+import { fetchDailyCloses } from "./twelveDataPrices";
 import type { RefreshAssetResult, RefreshStats } from "./types";
 
-const SOURCE = "yahoo";
+const SOURCE = "twelvedata";
 const LOOKBACK_DAYS = 10; // covers weekends/holidays so at least one trading day is always included
+const REQUEST_SPACING_MS = 8_000; // ~7.5 requests/min, under Twelve Data's free-tier 8/min cap
 
 export type PriceFetcher = (
   symbol: string,
@@ -35,6 +41,10 @@ interface AssetRow {
   id: number;
   symbol: string;
   price_symbol: string | null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function upsertPrice(
@@ -74,6 +84,7 @@ async function upsertPrice(
 export async function refreshLivePrices(
   client: PoolClient,
   fetcher: PriceFetcher = fetchDailyCloses,
+  delayMs: number = REQUEST_SPACING_MS,
 ): Promise<RefreshStats> {
   const assetsRes = await client.query<AssetRow>(
     "SELECT id, symbol, price_symbol FROM assets WHERE asset_class IN ('stock', 'etf') ORDER BY symbol",
@@ -85,8 +96,13 @@ export async function refreshLivePrices(
 
   const results: RefreshAssetResult[] = [];
 
-  for (const asset of assetsRes.rows) {
+  for (let i = 0; i < assetsRes.rows.length; i++) {
+    const asset = assetsRes.rows[i];
     const lookupSymbol = asset.price_symbol ?? asset.symbol;
+
+    if (i > 0) {
+      await sleep(delayMs);
+    }
 
     let closes: { date: string; close: number }[];
     try {

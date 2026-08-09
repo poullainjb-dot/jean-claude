@@ -33,6 +33,10 @@ async function pricesFor(assetId: number) {
   return res.rows;
 }
 
+// delayMs: 0 throughout — these tests exercise the rate-limit pacing logic
+// separately (see "paces requests..." below); everywhere else, waiting the
+// real ~8s/asset would make the suite unusably slow for no benefit.
+
 describe("refreshLivePrices", () => {
   it("only checks stock/etf assets, skipping cash/gold/crypto", async () => {
     await createAsset("IWDA", "etf");
@@ -41,7 +45,7 @@ describe("refreshLivePrices", () => {
     await createAsset("BTC", "crypto");
 
     const fetcher = vi.fn().mockResolvedValue([{ date: "2024-06-01", close: 100 }]);
-    const stats = await refreshLivePrices(client, fetcher);
+    const stats = await refreshLivePrices(client, fetcher, 0);
 
     expect(stats.assetsChecked).toBe(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -53,7 +57,7 @@ describe("refreshLivePrices", () => {
     await createAsset("AAPL", "stock"); // no override
 
     const fetcher = vi.fn().mockResolvedValue([{ date: "2024-06-01", close: 50 }]);
-    const stats = await refreshLivePrices(client, fetcher);
+    const stats = await refreshLivePrices(client, fetcher, 0);
 
     const lookups = stats.results.map((r) => r.lookupSymbol).sort();
     expect(lookups).toEqual(["AAPL", "IWDA.AS"]);
@@ -66,13 +70,13 @@ describe("refreshLivePrices", () => {
       { date: "2024-06-01", close: 190 },
       { date: "2024-06-02", close: 191 },
     ]);
-    const stats1 = await refreshLivePrices(client, firstFetch);
+    const stats1 = await refreshLivePrices(client, firstFetch, 0);
     expect(stats1.inserted).toBe(2);
     expect(stats1.updated).toBe(0);
     expect(stats1.unchanged).toBe(0);
     expect(await pricesFor(assetId)).toEqual([
-      { date: "2024-06-01", price: 190, source: "yahoo" },
-      { date: "2024-06-02", price: 191, source: "yahoo" },
+      { date: "2024-06-01", price: 190, source: "twelvedata" },
+      { date: "2024-06-02", price: 191, source: "twelvedata" },
     ]);
 
     // identical re-run
@@ -80,7 +84,7 @@ describe("refreshLivePrices", () => {
       { date: "2024-06-01", close: 190 },
       { date: "2024-06-02", close: 191 },
     ]);
-    const stats2 = await refreshLivePrices(client, sameFetch);
+    const stats2 = await refreshLivePrices(client, sameFetch, 0);
     expect(stats2.inserted).toBe(0);
     expect(stats2.updated).toBe(0);
     expect(stats2.unchanged).toBe(2);
@@ -90,7 +94,7 @@ describe("refreshLivePrices", () => {
       { date: "2024-06-01", close: 190 },
       { date: "2024-06-02", close: 199 }, // changed
     ]);
-    const stats3 = await refreshLivePrices(client, changedFetch);
+    const stats3 = await refreshLivePrices(client, changedFetch, 0);
     expect(stats3.inserted).toBe(0);
     expect(stats3.updated).toBe(1);
     expect(stats3.unchanged).toBe(1);
@@ -105,7 +109,7 @@ describe("refreshLivePrices", () => {
       return [{ date: "2024-06-01", close: 190 }];
     });
 
-    const stats = await refreshLivePrices(client, fetcher);
+    const stats = await refreshLivePrices(client, fetcher, 0);
     expect(stats.assetsChecked).toBe(2);
     expect(stats.succeeded).toBe(1);
     expect(stats.failed).toBe(1);
@@ -126,7 +130,7 @@ describe("refreshLivePrices", () => {
       return [{ date: "2024-06-01", close: 190 }];
     });
 
-    const stats = await refreshLivePrices(client, fetcher);
+    const stats = await refreshLivePrices(client, fetcher, 0);
     expect(stats.assetsChecked).toBe(2);
 
     const broken = stats.results.find((r) => r.symbol === "BROKEN");
@@ -139,8 +143,30 @@ describe("refreshLivePrices", () => {
   it("does nothing and reports zero assets checked when there are no stock/etf assets", async () => {
     await createAsset("EUR_CASH", "cash");
     const fetcher = vi.fn();
-    const stats = await refreshLivePrices(client, fetcher);
+    const stats = await refreshLivePrices(client, fetcher, 0);
     expect(stats.assetsChecked).toBe(0);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("paces requests to respect the rate limit: no delay before the first request, delayMs between the rest", async () => {
+    await createAsset("AAPL", "stock");
+    await createAsset("MSFT", "stock");
+    await createAsset("GOOG", "stock");
+
+    const timestamps: number[] = [];
+    const fetcher = vi.fn().mockImplementation(async () => {
+      timestamps.push(Date.now());
+      return [{ date: "2024-06-01", close: 100 }];
+    });
+
+    const start = Date.now();
+    await refreshLivePrices(client, fetcher, 50); // small but measurable delay
+    expect(fetcher).toHaveBeenCalledTimes(3);
+
+    // first request shouldn't wait on the initial delay
+    expect(timestamps[0] - start).toBeLessThan(50);
+    // second and third should each be spaced by roughly delayMs
+    expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(45);
+    expect(timestamps[2] - timestamps[1]).toBeGreaterThanOrEqual(45);
   });
 });

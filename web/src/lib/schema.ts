@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS assets (
     asset_class  TEXT NOT NULL CHECK (asset_class IN ('stock', 'etf', 'cash', 'gold', 'crypto')),
     currency     TEXT NOT NULL,
     -- The ticker a live price connector should look up, if it differs from
-    -- \`symbol\` (e.g. symbol is an ISIN, or Yahoo Finance needs an exchange
+    -- \`symbol\` (e.g. symbol is an ISIN, or the provider needs an exchange
     -- suffix like '.AS'). NULL means "use symbol as-is". Added for R5 — see
     -- priceRefresh.ts.
     price_symbol TEXT
