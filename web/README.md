@@ -97,13 +97,24 @@ produces a legible error, and added a test reproducing the exact scenario
 in `tests/twelveDataPrices.test.ts`. Yahoo Finance's own error path turned
 out not to need the same fix — its errors came back legible without it.
 
-**What's still unverified from this session:** whether a real Yahoo
-Finance response for a European ticker (e.g. `IWDA.AS`) parses correctly —
-this dev session's network can't reach either provider (confirmed via the
-proxy's own diagnostics), so Twelve Data's success path was verified live
-on the deployed app, but Yahoo's fallback path was only verified up to the
-real (blocked) network call. First refresh with real network access should
-check that specifically.
+**Second real bug, caught by actually running the fallback live:** once
+`price_symbol` correctly mapped `IWDA` → `IWDA.AS` and the request reached
+real Yahoo Finance data (on the deployed app — this dev session's network
+still can't reach either provider), it failed with *"Historical returned a
+result with SOME (but not all) null values."* `yahoo-finance2`'s default
+schema validation throws the entire call out if *any* row has a null field
+— open/high/low/volume, not just close — which real Yahoo data legitimately
+has for some tickers. Fixed by fetching with `validateResult: false` and
+doing the null-filtering ourselves (which the code already had — it just
+never got the chance to run, since the SDK threw first). See
+`normalizeHistoricalRows` in `src/lib/yahooPrices.ts`, unit-tested against
+this exact scenario in `tests/yahooPrices.test.ts`.
+
+**What's still unverified from this session:** whether the fixed Yahoo
+path now returns genuinely correct prices for `IWDA.AS` — the fix addresses
+the exact error seen live, but this dev session still can't reach either
+provider to confirm the corrected values are right. Check `source =
+'yahoo'` rows in `prices` against Yahoo Finance's own site for that ticker.
 
 Not built yet: remaining connectors (Bolero, TradeRepublic, crypto, gold), research tool.
 
@@ -149,7 +160,7 @@ step needed yet.
    round-trip/tamper rejection, login/logout routes, fail-closed behavior
    when `DASHBOARD_PASSWORD` is unset):
    ```bash
-   npm test         # expect 68 passed
+   npm test         # expect 75 passed
    npx tsc --noEmit # type-check (run `npm run build` first if this is a fresh checkout — see note below)
    npm run lint
    npm run build    # confirms it actually builds for production
