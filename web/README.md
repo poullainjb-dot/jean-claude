@@ -65,20 +65,32 @@ the underlying ISIN/ticker mismatch problem isn't provider-specific anyway
   not auto-detected correctly the first time, see `../DEPLOYMENT.md`),
   Postgres on Neon (pooled connection string).
 
-**Not verified against the live Twelve Data API yet** — this dev session's
-outbound network is policy-restricted and can't reach `api.twelvedata.com`
-(confirmed via the proxy's own diagnostics, same restriction Yahoo hit).
-Verified everything up to and including the real network call, the same
-way as the Yahoo round — and it caught a real bug this time: `fetchDailyCloses`
-was calling `res.json()` unconditionally, so the sandbox's plain-text proxy
-block produced a useless `"Unexpected token 'H'..."` error instead of
-saying what actually happened. Fixed to parse defensively and surface
-`HTTP <status> <statusText> — <body>` instead — see the test for this
-exact scenario in `tests/twelveDataPrices.test.ts`. What's still genuinely
-unverified: whether a real Twelve Data response parses correctly end to
-end. First person to run this with real network access should treat that
-as the actual first test, and check returned dates against Twelve Data's
-own site.
+**Verified live, end to end, on the deployed app** (this dev session's own
+network couldn't reach `api.twelvedata.com` — confirmed via the proxy's
+diagnostics — so this had to happen on the real deployment, not here). Two
+rounds:
+
+1. First live attempt surfaced a real bug: `fetchDailyCloses` called
+   `res.json()` unconditionally, so the sandbox's plain-text proxy-block
+   response produced a useless `"Unexpected token 'H'..."` error instead of
+   saying what actually happened. Fixed to parse defensively and surface
+   `HTTP <status> <statusText> — <body>` instead — see
+   `tests/twelveDataPrices.test.ts` for a test reproducing the exact
+   scenario.
+2. Second live attempt, after the fix and with a real US ticker (`AAPL`)
+   added to the DB: **genuine success** — `1 succeeded`, 6 new prices
+   written, real closes from Twelve Data's API in `prices` with
+   `source = 'twelvedata'`.
+
+**Real limitation found, not a bug:** Twelve Data's free tier doesn't cover
+`IWDA` (a European-listed ETF) — its own error message says that symbol
+needs the paid Grow/Venture plan. Confirmed the pattern by exchange, not
+just by ISIN-vs-ticker format: **free-tier Twelve Data reliably covers US
+tickers; most non-US exchanges are paywalled.** If your real holdings lean
+European (likely, given Bolero), this connector alone won't cover most of
+your actual portfolio on the free tier — worth deciding explicitly whether
+to upgrade Twelve Data, add another provider for non-US listings, or park
+this and rely on manual CSV for European assets for now.
 
 Not built yet: remaining connectors (Bolero, TradeRepublic, crypto, gold), research tool.
 
@@ -171,24 +183,21 @@ step needed yet.
    DB driver is configured to keep `DATE` columns as plain strings rather
    than JS `Date` objects specifically to avoid timezone-shift bugs here.
 
-3. **This is the one that actually needs your machine, not mine** — get a
-   free key at [twelvedata.com](https://twelvedata.com), set
-   `TWELVEDATA_API_KEY` in `.env.local`, then click **"Refresh from Twelve
-   Data"** on `/import` (with `IWDA` and `US0378331005` present from the
-   sample data above). Expect:
-   - `IWDA` and `US0378331005` most likely both fail — `IWDA` is a real
-     ticker but on a European exchange (may need a `price_symbol` override
-     like `IWDA.AS`, not settable from the UI yet — see Status above);
-     `US0378331005` is Apple's ISIN, not a ticker Twelve Data recognizes,
-     so it's expected to report `no_data` regardless.
-   - To actually see a success, add a real US-listed asset first — import
-     a one-off transaction with `asset_symbol=AAPL`, then refresh; expect
-     `1 succeeded`, a handful of new prices, and `SELECT * FROM prices
-     WHERE asset_id = (SELECT id FROM assets WHERE symbol = 'AAPL')`
-     showing real recent closes with `source = 'twelvedata'`.
-   - Check the returned dates against Twelve Data's own site for that
-     ticker — this is the specific thing I couldn't verify from this dev
-     session (see the Status section's caveat).
+3. **Needs a real machine with network access — confirmed working on the
+   deployed app, this dev session can't do it.** Get a free key at
+   [twelvedata.com](https://twelvedata.com), set `TWELVEDATA_API_KEY`, then
+   click **"Refresh from Twelve Data"** on `/import` (with `IWDA` and
+   `US0378331005` present from the sample data above). Expect:
+   - `IWDA` fails: *"This symbol is available starting with the Grow or
+     Venture plan"* — a real free-tier coverage limit, not a bug (see
+     Status above).
+   - `US0378331005` fails: Apple's ISIN isn't a valid symbol format for
+     this (or most) providers.
+   - Add a real US-listed asset (import a one-off transaction with
+     `asset_symbol=AAPL`) and refresh again — expect `1 succeeded`, several
+     new prices, and `SELECT * FROM prices WHERE asset_id = (SELECT id
+     FROM assets WHERE symbol = 'AAPL')` showing real recent closes with
+     `source = 'twelvedata'`.
 
 ## Roadmap
 
