@@ -5,7 +5,8 @@ import { useState } from "react";
 interface RefreshAssetResult {
   symbol: string;
   lookupSymbol: string;
-  status: "ok" | "no_data" | "error";
+  status: "ok" | "failed";
+  provider?: string;
   inserted: number;
   updated: number;
   unchanged: number;
@@ -56,7 +57,7 @@ export function RefreshLivePricesForm() {
         disabled={status === "loading"}
         className="rounded bg-black text-white px-4 py-2 disabled:opacity-50 dark:bg-white dark:text-black w-fit"
       >
-        {status === "loading" ? "Fetching… (can take a few minutes)" : "Refresh from Twelve Data"}
+        {status === "loading" ? "Fetching… (can take a few minutes)" : "Refresh live prices"}
       </button>
 
       {stats && (
@@ -67,6 +68,20 @@ export function RefreshLivePricesForm() {
           <p>
             {stats.inserted} new price(s), {stats.updated} updated, {stats.unchanged} unchanged
           </p>
+          {stats.results.some((r) => r.status === "ok") && (
+            <div className="pt-1 border-t border-green-600/30">
+              <p className="font-medium">Updated:</p>
+              <ul className="list-disc list-inside">
+                {stats.results
+                  .filter((r) => r.status === "ok")
+                  .map((r) => (
+                    <li key={r.symbol}>
+                      <span className="font-medium">{r.symbol}</span> via {r.provider}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
           {stats.results.some((r) => r.status !== "ok") && (
             <div className="pt-1 border-t border-green-600/30">
               <p className="font-medium">Not updated:</p>
@@ -76,8 +91,7 @@ export function RefreshLivePricesForm() {
                   .map((r) => (
                     <li key={r.symbol}>
                       <span className="font-medium">{r.symbol}</span>
-                      {r.lookupSymbol !== r.symbol && <> (looked up as {r.lookupSymbol})</>} —{" "}
-                      {r.status === "no_data" ? "no data found for this symbol" : r.error}
+                      {r.lookupSymbol !== r.symbol && <> (looked up as {r.lookupSymbol})</>} — {r.error}
                     </li>
                   ))}
               </ul>

@@ -22,24 +22,35 @@ export interface ImportPricesStats {
   unchanged: number;
 }
 
-export type RefreshAssetStatus = "ok" | "no_data" | "error";
+export type RefreshAssetStatus = "ok" | "failed";
 
 export interface RefreshAssetResult {
   symbol: string; // the asset's own symbol (assets.symbol)
   lookupSymbol: string; // what was actually queried (price_symbol ?? symbol)
   status: RefreshAssetStatus;
+  provider?: string; // which provider succeeded, when status is "ok"
   inserted: number;
   updated: number;
   unchanged: number;
+  // One message per provider tried, e.g. "twelvedata: ...; yahoo: ...",
+  // present when status is "failed" — every provider gets a say, since a
+  // Twelve Data-only message would hide that Yahoo was tried too.
   error?: string;
 }
 
 export interface RefreshStats {
   assetsChecked: number;
   succeeded: number;
-  failed: number; // no_data + error
+  failed: number;
   inserted: number;
   updated: number;
   unchanged: number;
   results: RefreshAssetResult[];
+}
+
+export interface PriceSymbolStats {
+  rowsRead: number;
+  updated: number;
+  unchanged: number;
+  cleared: number; // rows that explicitly blanked out an existing override
 }

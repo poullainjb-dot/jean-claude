@@ -15,8 +15,8 @@ serverless is built for).
 
 ## Status
 
-**R5: live stock/ETF prices from Twelve Data**, on top of R1-R4
-(transactions/prices CSV upload, computed holdings/value/profit, a
+**R5: live stock/ETF prices, with real international coverage**, on top of
+R1-R4 (transactions/prices CSV upload, computed holdings/value/profit, a
 dashboard, a password gate on every route, deployed and live on Vercel +
 Neon). Same schema, validation rules, dedup approach, and computation
 conventions as the original Python build throughout — see
@@ -28,35 +28,57 @@ conventions as the original Python build throughout — see
 root README's "Holdings & value/profit conventions" section (still
 accurate).
 
-**First connector, first pivot:** R5 originally shipped on Yahoo Finance
-(via `yahoo-finance2`, an unofficial wrapper — the direct TS equivalent of
-the spec's `yfinance`). Live-tested on the deployed app, it worked
-end-to-end but failed for both real assets in the sample data — correctly,
-not buggily: one ISIN Yahoo can't resolve, one ETF ticker that needs an
-exchange suffix Yahoo doesn't infer on its own. Switched to Twelve Data —
-an official, documented, key-based API — on request, on the reasoning that
-the underlying ISIN/ticker mismatch problem isn't provider-specific anyway
-(see `assets.price_symbol` below), so an official API was worth trading a
-"no key needed" connector for.
+**How R5 actually got here — three rounds, each driven by what the
+previous one revealed live, not by guessing upfront:**
+
+1. **Yahoo Finance** (`yahoo-finance2`, unofficial, no key, the direct TS
+   equivalent of the spec's `yfinance`). Worked end-to-end when live-tested,
+   but failed both real sample assets — correctly, not buggily: an ISIN
+   Yahoo can't resolve, and an ETF ticker needing an exchange suffix
+   nothing was supplying.
+2. **Switched to Twelve Data** (official, documented, key-based) on
+   request. Live-tested, caught and fixed a real bug (see below), then
+   confirmed genuine success with a real US ticker. But its free tier
+   turned out to paywall most non-US exchanges — its own error names the
+   Grow/Venture plan for a European ETF. Confirmed by exchange, not just
+   by symbol format: **free-tier Twelve Data reliably covers US tickers;
+   most non-US exchanges don't work on it at all.**
+3. **Added Yahoo Finance back as a fallback**, once it became clear the
+   European/international coverage gap wasn't a Yahoo-specific problem —
+   Yahoo's original failure was a symbol-format issue, not missing
+   coverage, and its actual exchange coverage is broad and free. Twelve
+   Data is tried first per asset (official, works well for US), Yahoo
+   catches what Twelve Data's free tier can't reach. Live-verified the
+   full fallback chain end to end, including that `price_symbol`
+   overrides correctly reach both providers.
 
 - `/` — dashboard: totals by currency + a positions table (quantity, price,
   value, cost basis, profit, profit %). Server-rendered, always fresh
   (`force-dynamic`) — never cached, since this is financial data.
-- `/import` — live price refresh (stocks/ETFs) + upload forms for
-  transactions and prices CSVs, CSV remaining the fallback per the spec's
-  design rule.
+- `/assets` — read-only listing of every asset and its current
+  `price_symbol` (if any), so you can see what's mapped without SQL.
+- `/import` — live price refresh, price-symbol overrides, and upload forms
+  for transactions/prices CSVs (CSV remaining the fallback per the spec's
+  design rule).
 - `GET /api/positions` — the dashboard's data as JSON, for reuse (scripts,
   a future mobile view, the research tool later on).
-- `POST /api/prices/refresh` — fetches recent daily closes from
-  [Twelve Data](https://twelvedata.com) for every stock/ETF asset, upserts
-  into `prices`. Best-effort per asset, unlike the CSV importers: one bad
-  symbol doesn't block the rest. Free tier is 800 requests/day, 8/minute —
-  a refresh paces itself at ~1 asset/8s to stay under that, so refreshing
-  ~20 assets takes a couple of minutes (the button/page waits for it; see
-  `maxDuration` in the route). `assets.price_symbol` overrides the lookup
-  ticker when `symbol` isn't a valid ticker (e.g. it's an ISIN, or a
-  non-US listing needs an exchange suffix) — no UI to edit it yet, set
-  directly via SQL if you need it before that lands.
+- `POST /api/prices/refresh` — for every stock/ETF asset, tries
+  [Twelve Data](https://twelvedata.com) then Yahoo Finance, in order,
+  stopping at the first provider with data; upserts into `prices` with
+  `source` set to whichever provider actually succeeded. Best-effort per
+  asset, unlike the CSV importers: one bad symbol doesn't block the rest,
+  and a failure reports what *each* provider said
+  (`"twelvedata: ...; yahoo: ..."`), not just the last one tried. Paced
+  per-provider (Twelve Data's free tier: 8/minute; Yahoo: no published
+  limit, still paced conservatively) — spacing only applies to consecutive
+  calls to the *same* provider, so an asset falling back to Yahoo isn't
+  also delayed by Twelve Data's slower pace. See `maxDuration` in the
+  route for the practical effect on refresh duration.
+- `POST /api/assets/price-symbols` + a CSV upload on `/import` —
+  self-service bulk `price_symbol` overrides (`asset_symbol,price_symbol`
+  columns; blank `price_symbol` clears an existing override). Built
+  because there's no way for me to set these directly — I don't have
+  database access to the deployed app.
 - `/login` + a single shared password (`DASHBOARD_PASSWORD`) gate every
   other route, including the API routes — see `src/lib/auth.ts` and
   `src/proxy.ts` (Next.js 16 renamed `middleware.ts` to `proxy.ts`; same
@@ -65,32 +87,23 @@ the underlying ISIN/ticker mismatch problem isn't provider-specific anyway
   not auto-detected correctly the first time, see `../DEPLOYMENT.md`),
   Postgres on Neon (pooled connection string).
 
-**Verified live, end to end, on the deployed app** (this dev session's own
-network couldn't reach `api.twelvedata.com` — confirmed via the proxy's
-diagnostics — so this had to happen on the real deployment, not here). Two
-rounds:
+**The real bug caught along the way:** `fetchDailyCloses` (Twelve Data)
+called `res.json()` unconditionally — this dev session's network policy
+returns a plain-text block page for blocked hosts, and that produced a
+useless `"Unexpected token 'H'..."` error instead of saying what actually
+happened. Fixed to parse defensively and surface
+`HTTP <status> <statusText> — <body>` instead; verified live that the fix
+produces a legible error, and added a test reproducing the exact scenario
+in `tests/twelveDataPrices.test.ts`. Yahoo Finance's own error path turned
+out not to need the same fix — its errors came back legible without it.
 
-1. First live attempt surfaced a real bug: `fetchDailyCloses` called
-   `res.json()` unconditionally, so the sandbox's plain-text proxy-block
-   response produced a useless `"Unexpected token 'H'..."` error instead of
-   saying what actually happened. Fixed to parse defensively and surface
-   `HTTP <status> <statusText> — <body>` instead — see
-   `tests/twelveDataPrices.test.ts` for a test reproducing the exact
-   scenario.
-2. Second live attempt, after the fix and with a real US ticker (`AAPL`)
-   added to the DB: **genuine success** — `1 succeeded`, 6 new prices
-   written, real closes from Twelve Data's API in `prices` with
-   `source = 'twelvedata'`.
-
-**Real limitation found, not a bug:** Twelve Data's free tier doesn't cover
-`IWDA` (a European-listed ETF) — its own error message says that symbol
-needs the paid Grow/Venture plan. Confirmed the pattern by exchange, not
-just by ISIN-vs-ticker format: **free-tier Twelve Data reliably covers US
-tickers; most non-US exchanges are paywalled.** If your real holdings lean
-European (likely, given Bolero), this connector alone won't cover most of
-your actual portfolio on the free tier — worth deciding explicitly whether
-to upgrade Twelve Data, add another provider for non-US listings, or park
-this and rely on manual CSV for European assets for now.
+**What's still unverified from this session:** whether a real Yahoo
+Finance response for a European ticker (e.g. `IWDA.AS`) parses correctly —
+this dev session's network can't reach either provider (confirmed via the
+proxy's own diagnostics), so Twelve Data's success path was verified live
+on the deployed app, but Yahoo's fallback path was only verified up to the
+real (blocked) network call. First refresh with real network access should
+check that specifically.
 
 Not built yet: remaining connectors (Bolero, TradeRepublic, crypto, gold), research tool.
 
@@ -136,7 +149,7 @@ step needed yet.
    round-trip/tamper rejection, login/logout routes, fail-closed behavior
    when `DASHBOARD_PASSWORD` is unset):
    ```bash
-   npm test         # expect 58 passed
+   npm test         # expect 68 passed
    npx tsc --noEmit # type-check (run `npm run build` first if this is a fresh checkout — see note below)
    npm run lint
    npm run build    # confirms it actually builds for production
@@ -183,21 +196,24 @@ step needed yet.
    DB driver is configured to keep `DATE` columns as plain strings rather
    than JS `Date` objects specifically to avoid timezone-shift bugs here.
 
-3. **Needs a real machine with network access — confirmed working on the
-   deployed app, this dev session can't do it.** Get a free key at
-   [twelvedata.com](https://twelvedata.com), set `TWELVEDATA_API_KEY`, then
-   click **"Refresh from Twelve Data"** on `/import` (with `IWDA` and
-   `US0378331005` present from the sample data above). Expect:
-   - `IWDA` fails: *"This symbol is available starting with the Grow or
-     Venture plan"* — a real free-tier coverage limit, not a bug (see
-     Status above).
-   - `US0378331005` fails: Apple's ISIN isn't a valid symbol format for
-     this (or most) providers.
-   - Add a real US-listed asset (import a one-off transaction with
-     `asset_symbol=AAPL`) and refresh again — expect `1 succeeded`, several
-     new prices, and `SELECT * FROM prices WHERE asset_id = (SELECT id
-     FROM assets WHERE symbol = 'AAPL')` showing real recent closes with
-     `source = 'twelvedata'`.
+3. **Needs a real machine with network access — this dev session can't do
+   it.** Get a free key at [twelvedata.com](https://twelvedata.com), set
+   `TWELVEDATA_API_KEY`, then click **"Refresh live prices"** on `/import`
+   (with `IWDA` and `US0378331005` present from the sample data above).
+   Confirmed working: `US0378331005` fails outright (Apple's ISIN isn't a
+   valid symbol format for either provider) — but `IWDA` should now
+   *succeed*, via the Yahoo Finance fallback, once you either:
+   - upload `sample_data/price_symbols_sample.csv` under "Price symbols"
+     first (sets `IWDA` → `IWDA.AS`, `US0378331005` → `AAPL` — check
+     `/assets` to confirm they landed), or
+   - add a real US-listed asset instead (import a one-off transaction with
+     `asset_symbol=AAPL`) to at least confirm the Twelve Data path.
+
+   This is the one specific thing left unverified from this dev session —
+   whether Yahoo's fallback actually returns real data for `IWDA.AS` once
+   it can reach the network. Check `SELECT * FROM prices p JOIN assets a
+   ON a.id = p.asset_id WHERE a.symbol = 'IWDA'` — expect `source =
+   'yahoo'` and dates matching Yahoo Finance's own site for that ticker.
 
 ## Roadmap
 

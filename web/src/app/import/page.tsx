@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ImportForm } from "../ImportForm";
 import { LogoutButton } from "../LogoutButton";
 import { PriceImportForm } from "../PriceImportForm";
+import { PriceSymbolForm } from "../PriceSymbolForm";
 import { RefreshLivePricesForm } from "../RefreshLivePricesForm";
 
 export default function ImportPage() {
@@ -10,6 +11,9 @@ export default function ImportPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Import data</h1>
         <div className="flex items-center gap-4">
+          <Link href="/assets" className="text-sm underline opacity-70">
+            Assets
+          </Link>
           <Link href="/" className="text-sm underline opacity-70">
             ← Dashboard
           </Link>
@@ -28,15 +32,31 @@ export default function ImportPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Prices — live (stocks &amp; ETFs)</h2>
         <p className="text-sm opacity-70">
-          Fetches recent daily closes from Twelve Data for every stock/ETF asset. Looks up each
-          asset&apos;s <code>symbol</code> directly unless a <code>price_symbol</code> override is set
-          on it (needed if your symbol is an ISIN, or a non-US listing needs an exchange suffix like{" "}
-          <code>.AS</code>) — a failed lookup is reported per-asset below, not silently skipped.
-          Doesn&apos;t touch cash, gold, or crypto; those get their own connectors later. Paced at
-          ~1 asset every 8 seconds to stay under the free tier&apos;s rate limit, so a refresh
-          covering many assets takes a few minutes — the page will wait for it.
+          Fetches recent daily closes for every stock/ETF asset — Twelve Data first, Yahoo Finance as
+          a fallback for anything Twelve Data&apos;s free tier can&apos;t reach (most non-US
+          exchanges). Looks up each asset&apos;s <code>symbol</code> directly unless a{" "}
+          <code>price_symbol</code> override is set (see &quot;Price symbols&quot; below) — a failed
+          lookup is reported per-asset, showing what each provider said, not silently skipped.
+          Doesn&apos;t touch cash, gold, or crypto; those get their own connectors later. Can take a
+          few minutes for many assets — the page will wait for it.
         </p>
         <RefreshLivePricesForm />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Price symbols</h2>
+        <p className="text-sm opacity-70">
+          Set <code>price_symbol</code> in bulk for assets whose <code>symbol</code> isn&apos;t
+          something a price provider recognizes directly — an ISIN, or a non-US listing needing an
+          exchange suffix (e.g. <code>IWDA</code> → <code>IWDA.AS</code>). Columns:{" "}
+          <code>asset_symbol,price_symbol</code>; leave <code>price_symbol</code> blank to clear an
+          existing override. See{" "}
+          <Link href="/assets" className="underline">
+            Assets
+          </Link>{" "}
+          for current values, and <code>sample_data/price_symbols_template.csv</code> for the format.
+        </p>
+        <PriceSymbolForm />
       </section>
 
       <section className="flex flex-col gap-3">
