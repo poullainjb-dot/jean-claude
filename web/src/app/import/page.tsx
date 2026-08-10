@@ -32,9 +32,10 @@ export default function ImportPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Prices — live (stocks &amp; ETFs)</h2>
         <p className="text-sm opacity-70">
-          Fetches recent daily closes for every stock/ETF asset — Twelve Data first, Yahoo Finance as
-          a fallback for anything Twelve Data&apos;s free tier can&apos;t reach (most non-US
-          exchanges). Looks up each asset&apos;s <code>symbol</code> directly unless a{" "}
+          Fetches recent daily closes for every stock/ETF asset — Yahoo Finance first (broad
+          exchange coverage, including non-US), Twelve Data as a fallback (official, reliable for US
+          tickers, backstop if Yahoo has an outage). Looks up each asset&apos;s <code>symbol</code>{" "}
+          directly unless a{" "}
           <code>price_symbol</code> override is set (see &quot;Price symbols&quot; below) — a failed
           lookup is reported per-asset, showing what each provider said, not silently skipped.
           Doesn&apos;t touch cash, gold, or crypto; those get their own connectors later. Can take a

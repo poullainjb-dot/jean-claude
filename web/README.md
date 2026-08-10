@@ -46,11 +46,16 @@ previous one revealed live, not by guessing upfront:**
 3. **Added Yahoo Finance back as a fallback**, once it became clear the
    European/international coverage gap wasn't a Yahoo-specific problem —
    Yahoo's original failure was a symbol-format issue, not missing
-   coverage, and its actual exchange coverage is broad and free. Twelve
-   Data is tried first per asset (official, works well for US), Yahoo
-   catches what Twelve Data's free tier can't reach. Live-verified the
-   full fallback chain end to end, including that `price_symbol`
-   overrides correctly reach both providers.
+   coverage, and its actual exchange coverage is broad and free.
+   Live-verified the full fallback chain end to end, including that
+   `price_symbol` overrides correctly reach both providers.
+4. **Reordered: Yahoo first, Twelve Data second.** Most real portfolios
+   here lean non-US, so Twelve Data-first meant paying its 8s/request
+   rate-limit pacing on a call that predictably fails for most assets.
+   Yahoo now goes first (covers what's actually held, fast when it
+   works); Twelve Data stays as the fallback — the backstop for whenever
+   Yahoo's unofficial API has an outage or gets blocked, and still the
+   more reliable path specifically for US tickers.
 
 - `/` — dashboard: totals by currency + a positions table (quantity, price,
   value, cost basis, profit, profit %). Server-rendered, always fresh
@@ -62,18 +67,21 @@ previous one revealed live, not by guessing upfront:**
   design rule).
 - `GET /api/positions` — the dashboard's data as JSON, for reuse (scripts,
   a future mobile view, the research tool later on).
-- `POST /api/prices/refresh` — for every stock/ETF asset, tries
-  [Twelve Data](https://twelvedata.com) then Yahoo Finance, in order,
-  stopping at the first provider with data; upserts into `prices` with
-  `source` set to whichever provider actually succeeded. Best-effort per
-  asset, unlike the CSV importers: one bad symbol doesn't block the rest,
-  and a failure reports what *each* provider said
-  (`"twelvedata: ...; yahoo: ..."`), not just the last one tried. Paced
-  per-provider (Twelve Data's free tier: 8/minute; Yahoo: no published
-  limit, still paced conservatively) — spacing only applies to consecutive
-  calls to the *same* provider, so an asset falling back to Yahoo isn't
-  also delayed by Twelve Data's slower pace. See `maxDuration` in the
-  route for the practical effect on refresh duration.
+- `POST /api/prices/refresh` — for every stock/ETF asset, tries Yahoo
+  Finance then [Twelve Data](https://twelvedata.com), in order, stopping
+  at the first provider with data; upserts into `prices` with `source` set
+  to whichever provider actually succeeded. Yahoo goes first since it
+  covers what most real portfolios here actually hold (non-US-heavy);
+  Twelve Data is the fallback (official, reliable for US tickers, backstop
+  if Yahoo's unofficial API has an outage). Best-effort per asset, unlike
+  the CSV importers: one bad symbol doesn't block the rest, and a failure
+  reports what *each* provider said (`"yahoo: ...; twelvedata: ..."`), not
+  just the last one tried. Paced per-provider (Yahoo: no published limit,
+  still paced conservatively; Twelve Data's free tier: 8/minute) —
+  spacing only applies to consecutive calls to the *same* provider, so
+  most refreshes rarely pay Twelve Data's slower pace at all now that it's
+  the fallback rather than the default. See `maxDuration` in the route
+  for the practical effect on refresh duration.
 - `POST /api/assets/price-symbols` + a CSV upload on `/import` —
   self-service bulk `price_symbol` overrides (`asset_symbol,price_symbol`
   columns; blank `price_symbol` clears an existing override). Built

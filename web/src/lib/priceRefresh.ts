@@ -6,12 +6,17 @@
  * it, it means you don't have to use it for stocks/ETFs day-to-day.
  *
  * Two providers, tried in order per asset:
- *   1. Twelve Data — official, documented, needs an API key. Reliable for
+ *   1. Yahoo Finance — unofficial, no key needed, broad exchange coverage
+ *      including Europe/international. Tried first because it's what
+ *      actually covers most real portfolios here (mostly non-US holdings)
+ *      — putting Twelve Data first meant paying its 8s/request rate-limit
+ *      pacing on a call that predictably fails for every non-US asset.
+ *   2. Twelve Data — official, documented, needs an API key. Reliable for
  *      US tickers; its free tier paywalls most non-US exchanges (confirmed
  *      live: its own error names the Grow/Venture plan for a European ETF).
- *   2. Yahoo Finance — unofficial, no key needed, broad exchange coverage
- *      including Europe/international. Falls back to this specifically for
- *      what Twelve Data's free tier can't reach.
+ *      Kept as the fallback rather than dropped — Yahoo is unofficial, so
+ *      this is the backstop for whenever Yahoo has an outage or gets
+ *      blocked, and it's still the more reliable path for US tickers.
  * The asset's `price_symbol` override (see priceSymbolImporter.ts) is used
  * for both providers — exchange-suffix conventions (e.g. '.AS') are shared
  * across most data providers, so one override usually works for both.
@@ -26,9 +31,9 @@
  * tier is 8 requests/minute, Yahoo has no published limit but still gets a
  * conservative spacing to avoid hammering it. Pacing consecutive calls to
  * the *same* provider (not consecutive calls overall) means an asset that
- * fails over to Yahoo doesn't also inherit Twelve Data's slower pace for
- * that second call — important given most assets here are expected to need
- * the fallback.
+ * falls through to Twelve Data doesn't also inherit Yahoo's pace for that
+ * second call, and — now that Yahoo is tried first — most refreshes should
+ * rarely pay Twelve Data's slower pace at all.
  */
 
 import type { PoolClient } from "pg";
@@ -51,8 +56,8 @@ export interface PriceProvider {
 }
 
 export const DEFAULT_PROVIDERS: PriceProvider[] = [
-  { name: "twelvedata", fetcher: fetchTwelveData, minSpacingMs: 8_000 }, // free tier: 8/min
   { name: "yahoo", fetcher: fetchYahoo, minSpacingMs: 1_000 }, // no published limit; still paced, conservatively
+  { name: "twelvedata", fetcher: fetchTwelveData, minSpacingMs: 8_000 }, // free tier: 8/min
 ];
 
 interface AssetRow {
