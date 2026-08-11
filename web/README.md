@@ -118,11 +118,13 @@ never got the chance to run, since the SDK threw first). See
 `normalizeHistoricalRows` in `src/lib/yahooPrices.ts`, unit-tested against
 this exact scenario in `tests/yahooPrices.test.ts`.
 
-**What's still unverified from this session:** whether the fixed Yahoo
-path now returns genuinely correct prices for `IWDA.AS` — the fix addresses
-the exact error seen live, but this dev session still can't reach either
-provider to confirm the corrected values are right. Check `source =
-'yahoo'` rows in `prices` against Yahoo Finance's own site for that ticker.
+**Fully confirmed working, on a real device:** `IWDA`, `US0378331005`
+(mapped via `price_symbol`), and `AAPL` all succeeded via the Yahoo
+fallback — `3 succeeded, 0 failed`, 9 new prices, 8 updated — tested from
+a phone, not just a desktop browser. This is the real end-to-end
+confirmation the whole chain (price_symbol overrides, Yahoo fallback, the
+`validateResult: false` fix) genuinely works with live data, which this
+dev session's network could never fully verify on its own.
 
 Not built yet: remaining connectors (Bolero, TradeRepublic, crypto, gold), research tool.
 
@@ -216,23 +218,17 @@ step needed yet.
    than JS `Date` objects specifically to avoid timezone-shift bugs here.
 
 3. **Needs a real machine with network access — this dev session can't do
-   it.** Get a free key at [twelvedata.com](https://twelvedata.com), set
-   `TWELVEDATA_API_KEY`, then click **"Refresh live prices"** on `/import`
-   (with `IWDA` and `US0378331005` present from the sample data above).
-   Confirmed working: `US0378331005` fails outright (Apple's ISIN isn't a
-   valid symbol format for either provider) — but `IWDA` should now
-   *succeed*, via the Yahoo Finance fallback, once you either:
-   - upload `sample_data/price_symbols_sample.csv` under "Price symbols"
-     first (sets `IWDA` → `IWDA.AS`, `US0378331005` → `AAPL` — check
-     `/assets` to confirm they landed), or
-   - add a real US-listed asset instead (import a one-off transaction with
-     `asset_symbol=AAPL`) to at least confirm the Twelve Data path.
-
-   This is the one specific thing left unverified from this dev session —
-   whether Yahoo's fallback actually returns real data for `IWDA.AS` once
-   it can reach the network. Check `SELECT * FROM prices p JOIN assets a
-   ON a.id = p.asset_id WHERE a.symbol = 'IWDA'` — expect `source =
-   'yahoo'` and dates matching Yahoo Finance's own site for that ticker.
+   it, but it's been confirmed working on the deployed app, including from
+   a phone.** Get a free key at [twelvedata.com](https://twelvedata.com),
+   set `TWELVEDATA_API_KEY` (optional now that Yahoo is the primary
+   provider, but keeps the fallback alive), then upload
+   `sample_data/price_symbols_sample.csv` under "Price symbols" (sets
+   `IWDA` → `IWDA.AS`, `US0378331005` → `AAPL` — check `/assets` to
+   confirm) and click **"Refresh live prices"** on `/import`. Expect all
+   three sample assets (`AAPL`, `IWDA`, `US0378331005`) to succeed via
+   Yahoo. Verify with `SELECT * FROM prices p JOIN assets a ON a.id =
+   p.asset_id WHERE a.symbol IN ('IWDA', 'AAPL', 'US0378331005')` — expect
+   `source = 'yahoo'` and dates matching Yahoo Finance's own site.
 
 ## Roadmap
 
