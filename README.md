@@ -17,6 +17,11 @@ this is built from (data sources, schema, computed metrics, research tool).
   it's tested and working — but it's no longer where new work happens. Its
   README section below still documents it accurately for anyone who wants
   to run it locally.
+- **[`scripts/traderepublic/`](./scripts/traderepublic/README.md)** — a
+  small local Python tool (not part of either build above) that converts a
+  TradeRepublic export into the `web/` app's transactions CSV format.
+  Credentials/2FA stay entirely on your machine, inside the third-party
+  `pytr` tool — see its own README for the full walkthrough and why.
 
 The switch happened because SQLite + Streamlit can't run on Vercel
 (stateless serverless functions can't hold a persistent local file or a
@@ -34,12 +39,15 @@ all your devices. That trade-off was made deliberately, not silently.
 CSV import) and Phase 2 (manual price import → computed holdings →
 value/profit view). Still fully working; see below for how to run it.
 
-**Next.js/Vercel build (active): R4 complete — live at a public URL, on your
-own Vercel + Neon accounts.** Transactions + prices CSV upload, computed
-holdings/value/profit, a dashboard (desktop and mobile widths both
-verified), and a password gate on every route including the API, backed by
-Postgres, actually deployed and confirmed reachable from a phone over
-cellular data. See [`web/README.md`](./web/README.md) for its own
+**Next.js/Vercel build (active): R7 in progress — live at a public URL, on
+your own Vercel + Neon accounts.** Transactions + prices CSV upload,
+computed holdings/value/profit, a dashboard (desktop and mobile widths
+both verified), a password gate on every route including the API, live
+stock/ETF prices (Yahoo Finance + Twelve Data fallback), a Bolero
+portfolio-snapshot importer, and now a TradeRepublic import path (see
+[`scripts/traderepublic/`](./scripts/traderepublic/README.md)) — all
+backed by Postgres, actually deployed and confirmed reachable from a phone
+over cellular data. See [`web/README.md`](./web/README.md) for its own
 status and roadmap.
 
 ## Setup
@@ -64,9 +72,13 @@ Holdings, value, and P&L are never stored — they're always *computed* from
 
 ## CSV import format
 
-Manual CSV is the fallback for **every** source, including Bolero and
-TradeRepublic once those connectors exist — so it's worth knowing this format
-even after live connectors are wired up.
+Manual CSV is the fallback for **every** source. Both broker connectors now
+funnel into it rather than bypassing it: Bolero via a purpose-built
+importer in `web/` (see `web/README.md`'s R6 entry — it's a positions
+snapshot, not this transaction-row format), TradeRepublic via
+[`scripts/traderepublic/`](./scripts/traderepublic/README.md), which
+converts to exactly this CSV format. So it's worth knowing this format
+either way.
 
 Template: [`sample_data/transactions_template.csv`](./sample_data/transactions_template.csv) (header only).
 Example: [`sample_data/transactions_sample.csv`](./sample_data/transactions_sample.csv) (dummy data, used by the tests).

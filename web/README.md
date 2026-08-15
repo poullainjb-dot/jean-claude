@@ -15,12 +15,12 @@ serverless is built for).
 
 ## Status
 
-**R6: Bolero import**, on top of R5 (live stock/ETF prices with real
-international coverage) and R1-R4 (transactions/prices CSV upload,
-computed holdings/value/profit, a dashboard, a password gate on every
-route, deployed and live on Vercel + Neon). Same schema, validation rules,
-dedup approach, and computation conventions as the original Python build
-throughout — see
+**R7: TradeRepublic import**, on top of R6 (Bolero import), R5 (live
+stock/ETF prices with real international coverage), and R1-R4
+(transactions/prices CSV upload, computed holdings/value/profit, a
+dashboard, a password gate on every route, deployed and live on Vercel +
+Neon). Same schema, validation rules, dedup approach, and computation
+conventions as the original Python build throughout — see
 [`src/lib/importer.ts`](./src/lib/importer.ts),
 [`src/lib/priceImporter.ts`](./src/lib/priceImporter.ts),
 [`src/lib/holdings.ts`](./src/lib/holdings.ts),
@@ -180,7 +180,54 @@ format:
 - New route: `/import` → "Bolero — portfolio snapshot" section,
   `POST /api/transactions/import-bolero-positions`.
 
-Not built yet: TradeRepublic, crypto, gold connectors; research tool.
+**R7: TradeRepublic import, via a local script — "Option A."**
+TradeRepublic doesn't offer any export button; the only practical path out
+is a third-party tool ([`pytr`](https://github.com/pytr-org/pytr)) that
+runs entirely on your own machine and talks to TradeRepublic's app API the
+same way the TradeRepublic app does. Credentials and 2FA approval never
+touch this app, Vercel, or this repo's code — pytr produces a CSV on your
+disk, and a new local converter (`scripts/traderepublic/`, repo root, not
+part of this Next.js app) turns *that* into this app's existing
+transactions CSV format, for upload the normal way. See
+[`scripts/traderepublic/README.md`](../scripts/traderepublic/README.md)
+for the full walkthrough.
+
+- **Every trade/dividend gets a matching cash leg**, not just the
+  security-side row — a synthetic `EUR_CASH` deposit/withdrawal alongside
+  each `buy`/`sell`/`dividend`. The app's model is deliberately
+  single-entry (a `buy` doesn't auto-decrement cash — see "Holdings &
+  value/profit conventions" in the root README), but TradeRepublic really
+  is one unified cash+securities account, and pytr's export gives the real
+  cash effect of every event — reproducing that is what makes the
+  dashboard's per-currency totals reflect actual cash and actual invested
+  capital, instead of double-counting money that moved from cash into a
+  position.
+- **A real bug, caught by testing against a real local Postgres import
+  before shipping, not just eyeballing the SQL:** the first version of the
+  sign convention put a *negative* quantity on `withdrawal`-type rows
+  (`REMOVAL`, `FEES`, `TAXES`). That's backwards — `withdrawal` already
+  subtracts `quantity` in the app's own SQL (`COST_BASIS_SQL` /
+  `computeHoldings`), so a negative quantity there double-negates and
+  *increases* cash on a withdrawal instead of decreasing it. Caught by
+  actually running a deposit-then-withdrawal through
+  `importTransactionsCsv` → `computeHoldings` against local Postgres and
+  checking the number, not by re-reading the SQL more carefully. Fixed:
+  `withdrawal` (and `deposit`) always take a positive quantity; `interest`
+  is the one type that takes a signed quantity directly, since the schema
+  has no separate "interest charge" type — verified the same way.
+- Corporate actions/transfers (`SPINOFF`, `SPLIT`, `SWAP`, `TRANSFER_IN`,
+  `TRANSFER_OUT`) aren't guess-mapped — they're written to a `.review.csv`
+  file alongside the output instead, same "flag it, don't guess"
+  principle as the Bolero importer's unsupported-`Type` handling.
+- Pure stdlib Python (no dependency beyond what `pytr` itself needs) —
+  deliberately, so a security-conscious reader can audit the whole
+  converter at a glance. 22 unit tests, no DB needed
+  (`scripts/traderepublic/test_converter.py`), covering the full
+  type/sign-mapping table; the sign convention itself was additionally
+  checked against real local Postgres as described above.
+
+Not built yet: crypto, gold connectors; remaining computed metrics;
+research tool.
 
 ## Stack
 
@@ -302,7 +349,7 @@ step needed yet.
 4. ~~Deploy to Vercel + Neon~~ ✅ (R4) — see [`../DEPLOYMENT.md`](../DEPLOYMENT.md)
 5. ~~Live price connector: yfinance-equivalent~~ ✅ (R5) — not yet verified against the live API from this dev session, see Status above
 6. ~~Bolero import adapter~~ ✅ (R6) — positions-snapshot approach, see Status above; not a real transaction-history import (Bolero doesn't offer a low-friction one — see the R6 writeup)
-7. TradeRepublic via `pytr`
+7. ~~TradeRepublic via `pytr`~~ ✅ (R7) — local script, see Status above and [`scripts/traderepublic/README.md`](../scripts/traderepublic/README.md)
 8. Crypto: exchange API(s) + CoinGecko prices
 9. Gold: manual entry + spot price API
 10. Remaining computed metrics: forecast, TWR, dividends, risk/diversification, rebalancing flags, FX conversion
