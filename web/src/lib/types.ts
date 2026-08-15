@@ -54,3 +54,11 @@ export interface PriceSymbolStats {
   unchanged: number;
   cleared: number; // rows that explicitly blanked out an existing override
 }
+
+export interface BoleroPositionsStats {
+  rowsRead: number;
+  assetsCreated: number;
+  inserted: number; // new synthetic snapshot transactions
+  updated: number; // existing snapshot transactions whose quantity/cost changed
+  removed: number; // snapshot transactions dropped because the position is no longer in this export
+}

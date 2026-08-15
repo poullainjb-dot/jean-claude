@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BoleroPositionsImportForm } from "../BoleroPositionsImportForm";
 import { ImportForm } from "../ImportForm";
 import { LogoutButton } from "../LogoutButton";
 import { PriceImportForm } from "../PriceImportForm";
@@ -27,6 +28,21 @@ export default function ImportPage() {
           See <code>sample_data/transactions_template.csv</code> in the repo for the format.
         </p>
         <ImportForm />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Bolero — portfolio snapshot</h2>
+        <p className="text-sm opacity-70">
+          Low-friction alternative to the Transactions CSV above, for Bolero specifically: upload the
+          &quot;Portfolio Positions&quot; Excel export (Portfolio → Posities → export icon → Excel) and each
+          holding becomes one buy transaction at its average cost, dated to when the export was made. This
+          approximates history before today rather than requiring it — no per-trade dates or fees, since
+          Bolero&apos;s export doesn&apos;t give those, but ongoing valuation from here on is exact.
+          Re-uploading a newer export updates quantities in place and removes positions you&apos;ve since sold,
+          instead of piling up duplicates. Assets are keyed by ISIN — set a{" "}
+          <code>price_symbol</code> for each one below so live price refresh can find it.
+        </p>
+        <BoleroPositionsImportForm />
       </section>
 
       <section className="flex flex-col gap-3">

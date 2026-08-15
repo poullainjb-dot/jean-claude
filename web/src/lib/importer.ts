@@ -149,7 +149,8 @@ function transactionId(row: NormalizedRow): string {
   return createHash("sha256").update(key, "utf8").digest("hex");
 }
 
-async function getOrCreateAsset(
+/** Exported for reuse by other importers (e.g. boleroPositionsImporter.ts). */
+export async function getOrCreateAsset(
   client: PoolClient,
   symbol: string,
   name: string | null,

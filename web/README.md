@@ -15,18 +15,20 @@ serverless is built for).
 
 ## Status
 
-**R5: live stock/ETF prices, with real international coverage**, on top of
-R1-R4 (transactions/prices CSV upload, computed holdings/value/profit, a
-dashboard, a password gate on every route, deployed and live on Vercel +
-Neon). Same schema, validation rules, dedup approach, and computation
-conventions as the original Python build throughout — see
+**R6: Bolero import**, on top of R5 (live stock/ETF prices with real
+international coverage) and R1-R4 (transactions/prices CSV upload,
+computed holdings/value/profit, a dashboard, a password gate on every
+route, deployed and live on Vercel + Neon). Same schema, validation rules,
+dedup approach, and computation conventions as the original Python build
+throughout — see
 [`src/lib/importer.ts`](./src/lib/importer.ts),
 [`src/lib/priceImporter.ts`](./src/lib/priceImporter.ts),
 [`src/lib/holdings.ts`](./src/lib/holdings.ts),
-[`src/lib/valuation.ts`](./src/lib/valuation.ts), and
-[`src/lib/priceRefresh.ts`](./src/lib/priceRefresh.ts) docstrings, plus the
-root README's "Holdings & value/profit conventions" section (still
-accurate).
+[`src/lib/valuation.ts`](./src/lib/valuation.ts),
+[`src/lib/priceRefresh.ts`](./src/lib/priceRefresh.ts), and
+[`src/lib/boleroPositionsImporter.ts`](./src/lib/boleroPositionsImporter.ts)
+docstrings, plus the root README's "Holdings & value/profit conventions"
+section (still accurate).
 
 **How R5 actually got here — three rounds, each driven by what the
 previous one revealed live, not by guessing upfront:**
@@ -62,9 +64,12 @@ previous one revealed live, not by guessing upfront:**
   (`force-dynamic`) — never cached, since this is financial data.
 - `/assets` — read-only listing of every asset and its current
   `price_symbol` (if any), so you can see what's mapped without SQL.
-- `/import` — live price refresh, price-symbol overrides, and upload forms
-  for transactions/prices CSVs (CSV remaining the fallback per the spec's
-  design rule).
+- `/import` — live price refresh, price-symbol overrides, upload forms for
+  transactions/prices CSVs (CSV remaining the fallback per the spec's
+  design rule), and the Bolero portfolio-snapshot importer (R6).
+- `POST /api/transactions/import-bolero-positions` — Bolero "Portfolio
+  Positions" .xlsx snapshot import; see the R6 writeup below for the
+  synthetic-transaction/upsert approach.
 - `GET /api/positions` — the dashboard's data as JSON, for reuse (scripts,
   a future mobile view, the research tool later on).
 - `POST /api/prices/refresh` — for every stock/ETF asset, tries Yahoo
@@ -126,7 +131,56 @@ confirmation the whole chain (price_symbol overrides, Yahoo fallback, the
 `validateResult: false` fix) genuinely works with live data, which this
 dev session's network could never fully verify on its own.
 
-Not built yet: remaining connectors (Bolero, TradeRepublic, crypto, gold), research tool.
+**R6: Bolero import, built against the format Bolero actually gives you.**
+The plan going in was a transaction-history CSV adapter, matching the CSV
+importer pattern the rest of the app uses. That's not what came back: the
+transaction-history export Bolero documents wasn't practically reachable,
+so what got sent instead was the **Portfolio Positions** Excel export
+(Portfolio → Posities → export icon → Excel) — a point-in-time snapshot of
+current holdings (quantity, average cost, ISIN, currency) with no
+individual buy/sell events, dates, or fees. Rather than block on an export
+that wasn't actually obtainable, the importer was built for the real
+format:
+
+- Each holding becomes one synthetic `buy` transaction at its average
+  cost, dated to the export's own "Imprimé le" timestamp — see
+  [`src/lib/boleroPositionsImporter.ts`](./src/lib/boleroPositionsImporter.ts)
+  for the full reasoning. Trades away real history (exact trade dates,
+  per-trade fees, realized P&L and dividends before the first import) for
+  zero-friction onboarding; valuation from the import date forward is
+  exact.
+- **Snapshot semantics, not additive.** Re-uploading a later export
+  updates each holding's synthetic transaction in place (upsert, keyed by
+  a hash of a fixed source tag + ISIN — not by date/quantity like the
+  regular CSV importer) and deletes the synthetic transaction for any
+  position no longer present (i.e. fully sold). Verified live against the
+  actual uploaded export: first import creates 7 assets/transactions;
+  re-importing the identical file updates all 7 with zero new inserts;
+  dropping a holding from the export removes its synthetic transaction
+  without touching the asset or a manually-imported transaction for the
+  same asset.
+- Assets are keyed by **ISIN** (what Bolero's export actually gives, not
+  a ticker) — pair with the existing `price_symbol` tool (`/assets`, R5)
+  to map each ISIN to something a price provider resolves.
+- Parses real Bolero's export layout directly: the workbook interleaves a
+  blank spacer column between every real column (a merged-cell export
+  artifact), and there's no separator between the position table and a
+  disclaimer footer other than the data itself — this is handled by
+  reading column values at fixed positions anchored to the header row
+  (not independently re-compacting each row, which would silently misalign
+  any row with a legitimately blank interior cell), and detecting the
+  table's end by the rightmost (ISIN) column going blank, verified against
+  the real file's exact footer/address-block layout rather than guessed.
+  An unrecognized `Type` (only `Actions`/`ETF` are mapped) is a validation
+  error, not a silent skip — a bond or fund holding shouldn't just vanish.
+- Uses `exceljs`, not the more common `xlsx` (SheetJS) package — SheetJS's
+  npm release is stuck on a version with unfixed prototype-pollution/ReDoS
+  advisories that a malicious upload could hit directly, since parsing an
+  untrusted upload is exactly that attack surface.
+- New route: `/import` → "Bolero — portfolio snapshot" section,
+  `POST /api/transactions/import-bolero-positions`.
+
+Not built yet: TradeRepublic, crypto, gold connectors; research tool.
 
 ## Stack
 
@@ -170,7 +224,7 @@ step needed yet.
    round-trip/tamper rejection, login/logout routes, fail-closed behavior
    when `DASHBOARD_PASSWORD` is unset):
    ```bash
-   npm test         # expect 75 passed
+   npm test         # expect 87 passed
    npx tsc --noEmit # type-check (run `npm run build` first if this is a fresh checkout — see note below)
    npm run lint
    npm run build    # confirms it actually builds for production
@@ -230,6 +284,16 @@ step needed yet.
    p.asset_id WHERE a.symbol IN ('IWDA', 'AAPL', 'US0378331005')` — expect
    `source = 'yahoo'` and dates matching Yahoo Finance's own site.
 
+4. **Bolero snapshot import — no network access needed, testable locally.**
+   Export your Bolero portfolio (Portfolio → Posities → export icon →
+   Excel) and upload it under "Bolero — portfolio snapshot" on `/import`.
+   Expect one asset + one `buy` transaction per holding, `source =
+   'bolero-snapshot'` — check with `SELECT symbol, price_symbol FROM
+   assets` (ISINs, no ticker yet) and `SELECT * FROM transactions WHERE
+   source = 'bolero-snapshot'`. Re-upload the same file: expect
+   `Updated: N, Inserted: 0` and no new rows. Set `price_symbol` for each
+   ISIN (see the R5 test above) so live price refresh can find them.
+
 ## Roadmap
 
 1. ~~Transactions data model + CSV upload~~ ✅ (R1)
@@ -237,7 +301,7 @@ step needed yet.
 3. ~~Password gate (single shared password via proxy)~~ ✅ (R3)
 4. ~~Deploy to Vercel + Neon~~ ✅ (R4) — see [`../DEPLOYMENT.md`](../DEPLOYMENT.md)
 5. ~~Live price connector: yfinance-equivalent~~ ✅ (R5) — not yet verified against the live API from this dev session, see Status above
-6. Bolero CSV/Excel import adapter
+6. ~~Bolero import adapter~~ ✅ (R6) — positions-snapshot approach, see Status above; not a real transaction-history import (Bolero doesn't offer a low-friction one — see the R6 writeup)
 7. TradeRepublic via `pytr`
 8. Crypto: exchange API(s) + CoinGecko prices
 9. Gold: manual entry + spot price API
